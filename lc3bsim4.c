@@ -713,7 +713,27 @@ void cycle_memory() {
 }
 
 
+
+
 int GATE_PC_VAL, GATE_MDR_VAL, GATE_ALU_VAL, GATE_SHF_VAL, GATE_MARMUX_VAL, addr_val;
+int GATE_PSR_VAL, GATE_SP_VAL, GATE_VECTOR_VAL;
+
+// SR1MUX: 0 = IR[11:9], 1 = IR[8:6], 2/3 = R6 
+int sr1_reg(int *mi){
+    int m = GetSR1MUX(mi);
+    if(m == 0) return (CURRENT_LATCHES.IR >> 9) & 0x7;
+    if(m == 1) return (CURRENT_LATCHES.IR >> 6) & 0x7;
+    return 6;
+}
+
+// DRMUX: 0 = IR[11:9], 1 = R7, 2/3 = R6
+int dr_reg(int *mi){
+    int m = GetDRMUX(mi);
+    if(m == 0) return (CURRENT_LATCHES.IR >> 9) & 0x7;
+    if(m == 1) return 7;
+    return 6;
+}
+
 void eval_bus_drivers() {
 
   /* 
@@ -729,16 +749,9 @@ void eval_bus_drivers() {
     // gate_marmux
     int marmux = GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION);
     int val1;
-    int val2;
+    int val2 = 0;
     if(GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION)){
-        int sr1mux = GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION);
-        int baseR = 0;
-        if(sr1mux){
-            baseR = (CURRENT_LATCHES.IR >> 6) & 0x7;
-        }else if (!sr1mux){
-            baseR = (CURRENT_LATCHES.IR >> 9) & 0x7;
-        }
-        val1 = CURRENT_LATCHES.REGS[baseR];
+        val1 = Low16bits(CURRENT_LATCHES.REGS[sr1_reg(CURRENT_LATCHES.MICROINSTRUCTION)]);
     }
     else{
         val1 = CURRENT_LATCHES.PC;
@@ -753,16 +766,14 @@ void eval_bus_drivers() {
     }else if(addr2mux == 3){
         val2 = sext((CURRENT_LATCHES.IR & 0x7FF), 11);
     }
-    int lshf1 = GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION);
-    if(lshf1){
+    if(GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION)){
         val2 <<= 1;
     }
     addr_val = Low16bits(val1 + val2);
 
     if(!marmux){
-        int val = (CURRENT_LATCHES.IR & 0xFF);
-        GATE_MARMUX_VAL = (val << 1);
-    }else if(marmux){
+        GATE_MARMUX_VAL = (CURRENT_LATCHES.IR & 0xFF) << 1;
+    }else{
         GATE_MARMUX_VAL = addr_val;
     }
 
@@ -772,35 +783,23 @@ void eval_bus_drivers() {
 
 
     // gate_alu
-    int valA;
-    int valB;
+    int valA, valB;
     int aluk = GetALUK(CURRENT_LATCHES.MICROINSTRUCTION);
-    int sr1mux = GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION);
-    int baseR1 = 0;
-    int baseR2 = 0;
+    valA = sext(Low16bits(CURRENT_LATCHES.REGS[sr1_reg(mi)]), 16);
 
-    if(sr1mux){
-        baseR1 = (CURRENT_LATCHES.IR >> 6) & 0x7;
-    }else if (!sr1mux){
-        baseR1 = (CURRENT_LATCHES.IR >> 9) & 0x7;
-    }
-    valA = sext(Low16bits(CURRENT_LATCHES.REGS[baseR1]), 16);
-
-    int sr2mux = (CURRENT_LATCHES.IR >> 5) & 1;
-    if(sr2mux){
+    if((CURRENT_LATCHES.IR >> 5) & 1){
         valB = sext(CURRENT_LATCHES.IR, 5);
-    }else if(!sr2mux){
-        baseR2 = (CURRENT_LATCHES.IR & 0x7);
-        valB = sext(Low16bits(CURRENT_LATCHES.REGS[baseR2]), 16);
+    }else{
+        valB = sext(Low16bits(CURRENT_LATCHES.REGS[CURRENT_LATCHES.IR & 0x7]), 16);
     }
 
     if(aluk == 0){
         GATE_ALU_VAL = Low16bits(valA + valB);
     }else if(aluk == 1){
         GATE_ALU_VAL = Low16bits(valA) & Low16bits(valB);
-    }else if (aluk == 2){
+    }else if(aluk == 2){
         GATE_ALU_VAL = Low16bits(valA) ^ Low16bits(valB);
-    }else if (aluk == 3){
+    }else{
         GATE_ALU_VAL = Low16bits(valA);
     }
 
@@ -808,34 +807,44 @@ void eval_bus_drivers() {
     int bit4 = (CURRENT_LATCHES.IR >> 4) & 1;
     int bit5 = (CURRENT_LATCHES.IR >> 5) & 1;
     int amt  = CURRENT_LATCHES.IR & 0xF;
-
-    int SR = (CURRENT_LATCHES.IR >> 6) & 0x7;
+    int SR   = (CURRENT_LATCHES.IR >> 6) & 0x7;
 
     if(!bit4){
         GATE_SHF_VAL = Low16bits(CURRENT_LATCHES.REGS[SR] << amt);
-    }else if ((bit4) && (bit5)){ // arithmetic
+    }else if(bit4 && bit5){ // arithmetic
         int val = CURRENT_LATCHES.REGS[SR] & 0xFFFF;
-        if (val & 0x8000){
+        if(val & 0x8000){
             val |= 0xFFFF0000;
         }
         GATE_SHF_VAL = Low16bits(val >> amt);
-    }else if ((bit4) && (!bit5)){ // logical
+    }else{ // logical
         GATE_SHF_VAL = Low16bits((CURRENT_LATCHES.REGS[SR] & 0xFFFF) >> amt);
     }
 
     // gate_mdr
     int MAR_0 = (CURRENT_LATCHES.MAR & 1);
-    int data_size = GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION);
-
-    if(data_size){
+    if(GetDATA_SIZE(mi)){
         GATE_MDR_VAL = CURRENT_LATCHES.MDR;
-    }else if (!MAR_0){
-        int val = (CURRENT_LATCHES.MDR & 0xFF);
-        GATE_MDR_VAL = Low16bits(sext(val, 8));
+    }else if(!MAR_0){
+        GATE_MDR_VAL = Low16bits(sext(CURRENT_LATCHES.MDR & 0xFF, 8));
     }else{
-        int val = ((CURRENT_LATCHES.MDR >> 8) & 0xFF);
-        GATE_MDR_VAL = Low16bits(sext(val, 8));
+        GATE_MDR_VAL = Low16bits(sext((CURRENT_LATCHES.MDR >> 8) & 0xFF, 8));
     }
+
+    // gate_psr: {PRIV, 12'b0, N, Z, P}
+    GATE_PSR_VAL = Low16bits((CURRENT_LATCHES.PRIV << 15) | (CURRENT_LATCHES.N << 2) | (CURRENT_LATCHES.Z << 1) | CURRENT_LATCHES.P);
+
+    // gate_sp: R6 +/- 2 come from SR1 OUT (SR1MUX = R6 in those states)
+    int sp_in = Low16bits(CURRENT_LATCHES.REGS[sr1_reg(mi)]);
+    switch(GetSPMUX(mi)){
+        case 0:  GATE_SP_VAL = Low16bits(sp_in + 2);        break;
+        case 1:  GATE_SP_VAL = Low16bits(sp_in - 2);        break;
+        case 2:  GATE_SP_VAL = Low16bits(CURRENT_LATCHES.USP); break;
+        default: GATE_SP_VAL = Low16bits(CURRENT_LATCHES.SSP); break;
+    }
+
+    // gate_vector: x0200 + (EXCV << 1)
+    GATE_VECTOR_VAL = 0x0200 | ((CURRENT_LATCHES.EXCV & 0xFF) << 1);
 
 }
 
@@ -852,6 +861,9 @@ void drive_bus() {
     int gatealu = GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION);
     int gatemarmux = GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION);
     int gateshf = GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION);
+    int gatepsr = GetGATE_PSR(CURRENT_LATCHES.MICROINSTRUCTION);
+    int gatesp = GetGATE_SP(CURRENT_LATCHES.MICROINSTRUCTION);
+    int gatevector = GetGATE_VECTOR(CURRENT_LATCHES.MICROINSTRUCTION);
 
     if(gatepc){
         BUS = GATE_PC_VAL;
@@ -863,6 +875,12 @@ void drive_bus() {
         BUS = GATE_MARMUX_VAL;
     }else if(gateshf){
         BUS = GATE_SHF_VAL;
+    }else if(gatepsr){
+        BUS = GATE_PSR_VAL;
+    }else if(gatesp){
+        BUS = GATE_SP_VAL;
+    }else if(gatevector){
+        BUS = GATE_VECTOR_VAL;
     }else{
         BUS = 0;
     }
