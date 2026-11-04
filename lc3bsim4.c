@@ -629,18 +629,44 @@ void eval_micro_sequencer() {
    * micro sequencer logic. Latch the next microinstruction.
    */
 
+    int cond = GetCOND(CURRENT_LATCHES.MICROINSTRUCTION);
+    int J = (GetJ(CURRENT_LATCHES.MICROINSTRUCTION));
+    int ird  = GetIRD(CURRENT_LATCHES.MICROINSTRUCTION);
+    int branch = ((cond == 2) & CURRENT_LATCHES.BEN) << 2;
+    int ready = ((cond == 1) & CURRENT_LATCHES.READY) << 1;
+    int addrMode = ((cond == 3) & ((CURRENT_LATCHES.IR >> 11) & 1));
+    int mar  = CURRENT_LATCHES.MAR;
+    int ir = CURRENT_LATCHES.IR;
+    int psr15     = ((cond == 4) && CURRENT_LATCHES.PRIV) << 3;
+
+    // LOGIC1 
+    int unal = GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION) & (mar & 1);
+    int prot = CURRENT_LATCHES.PRIV && (Low16bits(mar) < 0x3000);
+    int exc  = prot | unal;
+    int unk  = ird && ((ir >> 15) & 1) && !((ir >> 14) & 1) && ((ir >> 13) & 1);
+    int intr = (CURRENT_LATCHES.INTV != 0);
+
     if(GetIRD(CURRENT_LATCHES.MICROINSTRUCTION)){
         NEXT_LATCHES.STATE_NUMBER = 0x0F & (CURRENT_LATCHES.IR >> 12);
     } 
     else{
-        int cond = GetCOND(CURRENT_LATCHES.MICROINSTRUCTION);
-        int J = (GetJ(CURRENT_LATCHES.MICROINSTRUCTION));
-        int branch = ((cond == 2) & CURRENT_LATCHES.BEN) << 2;
-        int ready = ((cond == 1) & CURRENT_LATCHES.READY) << 1;
-        int addrMode = ((cond == 3) & ((CURRENT_LATCHES.IR >> 11) & 1));
+        int interrupt = ((cond == 5) && intr) << 4;
+        int exception = ((cond == 6) && exc) << 5;
 
-        NEXT_LATCHES.STATE_NUMBER = J | branch | ready | addrMode;
+        NEXT_LATCHES.STATE_NUMBER = J | branch | ready | addrMode | psr15 | interrupt | exception;
     }
+
+    /* LD.EXCV / ExcMux / CLR.INTV */
+    int ld_excv = ((cond == 5) && intr) || ((cond == 6) && exc) || unk;
+    if(ld_excv){
+        if(unk)                NEXT_LATCHES.EXCV = 0x04;
+        else if(cond == 6)     NEXT_LATCHES.EXCV = prot ? 0x02 : 0x03; /* protection beats unaligned */
+        else                   NEXT_LATCHES.EXCV = CURRENT_LATCHES.INTV;
+    }
+    if((cond == 5) && intr){
+        NEXT_LATCHES.INTV = 0; /* CLR.INTV */
+    }
+
     memcpy(NEXT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[NEXT_LATCHES.STATE_NUMBER], sizeof(int) * CONTROL_STORE_BITS);
 }
 
