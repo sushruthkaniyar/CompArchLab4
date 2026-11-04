@@ -31,8 +31,8 @@ AND  R3, R3, #0       ; R3 = 0 (sum)
 
 
 ; Sum 20 signed bytes
-LOOP
-LDB  R4, R1, #0       ; Load signed byte
+; Sum 20 signed bytes
+LOOP LDB  R4, R1, #0  ; Load signed byte
 ADD  R3, R3, R4       ; Add to running sum
 ADD  R1, R1, #1       ; Advance byte pointer
 ADD  R2, R2, #-1      ; Decrement counter

@@ -168,9 +168,6 @@ int PC,		/* program counter */
     Z,		/* z condition bit */
     P,		/* p condition bit */
     BEN,        /* ben register */
-    INTV, /* Interrupt vector register */
-    EXCV, /* Exception vector register */
-    SSP,  /* Supervisor stack pointer */
     USP,  /* User stack pointer */
     PRIV; /* PSR[15]: 1 = user mode, 0 = supervisor mode */
 
