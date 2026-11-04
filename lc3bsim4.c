@@ -922,8 +922,7 @@ void latch_datapath_values() {
     }
 
     // ld.pc
-    int ldpc =  GetLD_PC(CURRENT_LATCHES.MICROINSTRUCTION);
-    if(ldpc){
+    if(GetLD_PC(CURRENT_LATCHES.MICROINSTRUCTION)){
         int pcmux = GetPCMUX(CURRENT_LATCHES.MICROINSTRUCTION);
         if(pcmux == 0){
             NEXT_LATCHES.PC = Low16bits(CURRENT_LATCHES.PC + 2);
@@ -931,6 +930,8 @@ void latch_datapath_values() {
             NEXT_LATCHES.PC = BUS;
         }else if(pcmux == 2){
             NEXT_LATCHES.PC = addr_val;
+        }else{
+            NEXT_LATCHES.PC = Low16bits(CURRENT_LATCHES.PC - 2);
         }
     }
 
@@ -941,33 +942,22 @@ void latch_datapath_values() {
     }
 
     // ld.cc
-    int ldcc =  GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION);
-    if(ldcc){
-        int bus16 = sext(BUS, 16);
-        if(bus16 == 0){
-            NEXT_LATCHES.N = 0;
-            NEXT_LATCHES.Z = 1;
-            NEXT_LATCHES.P = 0;
-        }else if(bus16 > 0){
-            NEXT_LATCHES.N = 0;
-            NEXT_LATCHES.Z = 0;
-            NEXT_LATCHES.P = 1;
-        }else if(bus16 < 0){
-            NEXT_LATCHES.N = 1;
-            NEXT_LATCHES.Z = 0;
-            NEXT_LATCHES.P = 0;
+    if(GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION)){
+        if(GetPSRMUX(CURRENT_LATCHES.MICROINSTRUCTION)){
+            NEXT_LATCHES.N = (BUS >> 2) & 1;
+            NEXT_LATCHES.Z = (BUS >> 1) & 1;
+            NEXT_LATCHES.P = BUS & 1;
+        }else{
+            int bus16 = sext(BUS, 16);
+            NEXT_LATCHES.N = (bus16 < 0);
+            NEXT_LATCHES.Z = (bus16 == 0);
+            NEXT_LATCHES.P = (bus16 > 0);
         }
     }
 
     // ld.reg
-    int ldreg =  GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION);
-    if(ldreg){
-        if(GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION)){
-            NEXT_LATCHES.REGS[7] = BUS;
-        }else{
-            int reg = ((CURRENT_LATCHES.IR >> 9) & 0x7);
-            NEXT_LATCHES.REGS[reg] = BUS;
-        }
+    if(GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION)){
+        NEXT_LATCHES.REGS[dr_reg(CURRENT_LATCHES.MICROINSTRUCTION)] = BUS;
     }
 
     // ld.ben
@@ -978,6 +968,23 @@ void latch_datapath_values() {
         int p = ((CURRENT_LATCHES.IR >> 9) & 1) & CURRENT_LATCHES.P;
 
         NEXT_LATCHES.BEN = (n | z | p);
+    }
+
+    // ld.priv
+    if(GetLD_PRIV(CURRENT_LATCHES.MICROINSTRUCTION)){
+        if(GetPSRMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0){
+            NEXT_LATCHES.PRIV = 0;
+        }else{
+            NEXT_LATCHES.PRIV = (BUS >> 15) & 1;
+        }
+    }
+
+    // ld.usp / ld.ssp: loaded from SR1 OUT (R6 in states 45 and 26)
+    if(GetLD_USP(CURRENT_LATCHES.MICROINSTRUCTION)){
+        NEXT_LATCHES.USP = Low16bits(CURRENT_LATCHES.REGS[sr1_reg(CURRENT_LATCHES.MICROINSTRUCTION)]);
+    }
+    if(GetLD_SSP(CURRENT_LATCHES.MICROINSTRUCTION)){
+        NEXT_LATCHES.SSP = Low16bits(CURRENT_LATCHES.REGS[sr1_reg(CURRENT_LATCHES.MICROINSTRUCTION)]);
     }
 
 }
