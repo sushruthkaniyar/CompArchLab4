@@ -50,32 +50,40 @@ void latch_datapath_values();
 /***************************************************************/
 enum CS_BITS {                                                  
     IRD,
-    COND1, COND0,
+    COND2, COND1, COND0,
     J5, J4, J3, J2, J1, J0,
-    LD_MAR,
-    LD_MDR,
-    LD_IR,
-    LD_BEN,
-    LD_REG,
-    LD_CC,
+    LD_MAR, 
+    LD_MDR, 
+    LD_IR, 
+    LD_BEN, 
+    LD_REG, 
+    LD_CC, 
     LD_PC,
-    GATE_PC,
-    GATE_MDR,
-    GATE_ALU,
-    GATE_MARMUX,
+    GATE_PC, 
+    GATE_MDR, 
+    GATE_ALU, 
+    GATE_MARMUX, 
     GATE_SHF,
-    PCMUX1, PCMUX0,
-    DRMUX,
-    SR1MUX,
+    PCMUX1, 
+    PCMUX0,
     ADDR1MUX,
     ADDR2MUX1, ADDR2MUX0,
     MARMUX,
     ALUK1, ALUK0,
-    MIO_EN,
-    R_W,
-    DATA_SIZE,
+    MIO_EN, 
+    R_W, 
+    DATA_SIZE, 
     LSHF1,
-/* MODIFY: you have to add all your new control signals */
+    GATE_PSR, 
+    GATE_SP, 
+    GATE_VECTOR,
+    SPMUX1, SPMUX0,
+    LD_USP, 
+    LD_SSP, 
+    LD_PRIV,
+    PSRMUX,
+    DRMUX1, DRMUX0,
+    SR1MUX1, SR1MUX0,
     CONTROL_STORE_BITS
 } CS_BITS;
 
@@ -83,7 +91,7 @@ enum CS_BITS {
 /* Functions to get at the control bits.                       */
 /***************************************************************/
 int GetIRD(int *x)           { return(x[IRD]); }
-int GetCOND(int *x)          { return((x[COND1] << 1) + x[COND0]); }
+int GetCOND(int *x)          { return((x[COND2]<<2) + (x[COND1]<<1) + x[COND0]); }
 int GetJ(int *x)             { return((x[J5] << 5) + (x[J4] << 4) +
 				      (x[J3] << 3) + (x[J2] << 2) +
 				      (x[J1] << 1) + x[J0]); }
@@ -100,8 +108,8 @@ int GetGATE_ALU(int *x)      { return(x[GATE_ALU]); }
 int GetGATE_MARMUX(int *x)   { return(x[GATE_MARMUX]); }
 int GetGATE_SHF(int *x)      { return(x[GATE_SHF]); }
 int GetPCMUX(int *x)         { return((x[PCMUX1] << 1) + x[PCMUX0]); }
-int GetDRMUX(int *x)         { return(x[DRMUX]); }
-int GetSR1MUX(int *x)        { return(x[SR1MUX]); }
+int GetDRMUX(int *x)         { return((x[DRMUX1]<<1) + x[DRMUX0]); }
+int GetSR1MUX(int *x)        { return((x[SR1MUX1]<<1) + x[SR1MUX0]); }
 int GetADDR1MUX(int *x)      { return(x[ADDR1MUX]); }
 int GetADDR2MUX(int *x)      { return((x[ADDR2MUX1] << 1) + x[ADDR2MUX0]); }
 int GetMARMUX(int *x)        { return(x[MARMUX]); }
@@ -110,6 +118,14 @@ int GetMIO_EN(int *x)        { return(x[MIO_EN]); }
 int GetR_W(int *x)           { return(x[R_W]); }
 int GetDATA_SIZE(int *x)     { return(x[DATA_SIZE]); } 
 int GetLSHF1(int *x)         { return(x[LSHF1]); }
+int GetGATE_PSR(int *x)      { return(x[GATE_PSR]); }
+int GetGATE_SP(int *x)       { return(x[GATE_SP]); }
+int GetGATE_VECTOR(int *x)   { return(x[GATE_VECTOR]); }
+int GetSPMUX(int *x)         { return((x[SPMUX1] << 1) + x[SPMUX0]); }
+int GetLD_USP(int *x)        { return(x[LD_USP]); }
+int GetLD_SSP(int *x)        { return(x[LD_SSP]); }
+int GetLD_PRIV(int *x)       { return(x[LD_PRIV]); }
+int GetPSRMUX(int *x)        { return(x[PSRMUX]); }
 /* MODIFY: you can add more Get functions for your new control signals */
 
 /***************************************************************/
@@ -151,7 +167,12 @@ int PC,		/* program counter */
     N,		/* n condition bit */
     Z,		/* z condition bit */
     P,		/* p condition bit */
-    BEN;        /* ben register */
+    BEN,        /* ben register */
+    INTV, /* Interrupt vector register */
+    EXCV, /* Exception vector register */
+    SSP,  /* Supervisor stack pointer */
+    USP,  /* User stack pointer */
+    PRIV; /* PSR[15]: 1 = user mode, 0 = supervisor mode */
 
 int READY;	/* ready bit */
   /* The ready bit is also latched as you dont want the memory system to assert it 
@@ -211,6 +232,10 @@ void cycle() {
   eval_bus_drivers();
   drive_bus();
   latch_datapath_values();
+  
+  if (CYCLE_COUNT == 299){
+    NEXT_LATCHES.INTV = 0x01;
+  }
 
   CURRENT_LATCHES = NEXT_LATCHES;
 
@@ -524,6 +549,11 @@ void initialize(char *argv[], int num_prog_files) {
     CURRENT_LATCHES.STATE_NUMBER = INITIAL_STATE_NUMBER;
     memcpy(CURRENT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[INITIAL_STATE_NUMBER], sizeof(int)*CONTROL_STORE_BITS);
     CURRENT_LATCHES.SSP = 0x3000; /* Initial value of system stack pointer */
+
+    CURRENT_LATCHES.USP = 0;
+    CURRENT_LATCHES.PRIV = 1;     /* start in user mode */
+    CURRENT_LATCHES.INTV = 0;
+    CURRENT_LATCHES.EXCV = 0;
 
     NEXT_LATCHES = CURRENT_LATCHES;
 
