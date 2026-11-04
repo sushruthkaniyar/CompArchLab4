@@ -785,7 +785,7 @@ void eval_bus_drivers() {
     // gate_alu
     int valA, valB;
     int aluk = GetALUK(CURRENT_LATCHES.MICROINSTRUCTION);
-    valA = sext(Low16bits(CURRENT_LATCHES.REGS[sr1_reg(mi)]), 16);
+    valA = sext(Low16bits(CURRENT_LATCHES.REGS[sr1_reg(CURRENT_LATCHES.MICROINSTRUCTION)]), 16);
 
     if((CURRENT_LATCHES.IR >> 5) & 1){
         valB = sext(CURRENT_LATCHES.IR, 5);
@@ -823,7 +823,7 @@ void eval_bus_drivers() {
 
     // gate_mdr
     int MAR_0 = (CURRENT_LATCHES.MAR & 1);
-    if(GetDATA_SIZE(mi)){
+    if(GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION)){
         GATE_MDR_VAL = CURRENT_LATCHES.MDR;
     }else if(!MAR_0){
         GATE_MDR_VAL = Low16bits(sext(CURRENT_LATCHES.MDR & 0xFF, 8));
@@ -835,8 +835,8 @@ void eval_bus_drivers() {
     GATE_PSR_VAL = Low16bits((CURRENT_LATCHES.PRIV << 15) | (CURRENT_LATCHES.N << 2) | (CURRENT_LATCHES.Z << 1) | CURRENT_LATCHES.P);
 
     // gate_sp: R6 +/- 2 come from SR1 OUT (SR1MUX = R6 in those states)
-    int sp_in = Low16bits(CURRENT_LATCHES.REGS[sr1_reg(mi)]);
-    switch(GetSPMUX(mi)){
+    int sp_in = Low16bits(CURRENT_LATCHES.REGS[sr1_reg(CURRENT_LATCHES.MICROINSTRUCTION)]);
+    switch(GetSPMUX(CURRENT_LATCHES.MICROINSTRUCTION)){
         case 0:  GATE_SP_VAL = Low16bits(sp_in + 2);        break;
         case 1:  GATE_SP_VAL = Low16bits(sp_in - 2);        break;
         case 2:  GATE_SP_VAL = Low16bits(CURRENT_LATCHES.USP); break;
