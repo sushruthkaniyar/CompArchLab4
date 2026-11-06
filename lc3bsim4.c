@@ -634,7 +634,7 @@ void eval_micro_sequencer() {
     int addrMode = ((cond == 3) & ((CURRENT_LATCHES.IR >> 11) & 1));
     int mar  = CURRENT_LATCHES.MAR;
     int ir = CURRENT_LATCHES.IR;
-    int psr15 = ((cond == 4) && CURRENT_LATCHES.PRIV) << 3;
+    int psr15     = ((cond == 4) && CURRENT_LATCHES.PRIV) << 3;
 
     // LOGIC1 
     int unal = GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION) & (mar & 1);
